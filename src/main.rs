@@ -1,10 +1,12 @@
-pub mod llm;
-use clap::{ App, Arg };
-use dotenv::dotenv;
-use llm::*;
-use copypasta::{ ClipboardContext, ClipboardProvider };
-use std::io::{ self, Read };
+pub mod llm_low;
 use atty::Stream;
+use clap::{ App, Arg };
+use copypasta::{ ClipboardContext, ClipboardProvider };
+use dotenv::dotenv;
+use llm_low::*;
+use std::io::{ self, Read };
+use colored::*;
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,15 +16,14 @@ async fn main() -> anyhow::Result<()> {
     let matches = App::new("terminal-reader")
         .version("1.0")
         .arg(
-            Arg::with_name("pat")
-                .long("pattern")
-                .help("Specifies the pattern to watch")
+            Arg::with_name("p")
+                .long("prompt")
+                .help("Specifies additional prompt")
                 .takes_value(true)
         )
         .get_matches();
 
-    let pat = matches.value_of("pat").unwrap_or(".*");
-    println!("Value for pattern: {}", pat);
+    let pat = matches.value_of("p");
 
     let mut input = String::new();
     if atty::is(atty::Stream::Stdin) {
@@ -30,17 +31,25 @@ async fn main() -> anyhow::Result<()> {
     } else {
         io::stdin().read_to_string(&mut input)?;
     }
+    let prompt_str = match pat {
+        Some(pat) => format!("Here is what you need to pay attention to: `{:?}`", pat),
+        None => String::new(),
+    };
 
     let system_prompt = format!(
-        "You're a coding bot, you're tasked to read terminal outs and identify potential issues."
+        "You're a coding bot, you're tasked to read terminal outputs and identify potential issues."
     );
     let user_input = format!(
-        "These are the output of the program executed: `{input}`, here is the area to pay special attention to : `{pat}`"
+        "These are the output of the program executed: `{input}`, {prompt_str} please identify the issues."
     );
 
-    let res = chat_inner_async(&system_prompt, &input, 200, "gpt-3.5-turbo").await?;
+    let model = "mistralai/Mistral-7B-Instruct-v0.1";
+    let model = "Phind/Phind-CodeLlama-34B-v2";
 
-    println!("step 2 Raw: {:?}", res);
+    let res = chat_inner_async(&system_prompt, &input, 200, model).await?;
+    ctx.set_contents(res.to_owned()).expect("Failed to set clipboard content");
+
+    println!("{}:\n {}", "CodeLlama".color("yellow"), res.color("blue"));
 
     Ok(())
 }
